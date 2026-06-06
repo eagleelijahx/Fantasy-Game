@@ -14,25 +14,23 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up MinGW Compiler
-      uses: egor-tisin/setup-mingw@v2
-      with:
-        platform: x64
-
     - name: Download & Extract Windows Allegro 5 Development Files
+      shell: powershell
       run: |
-        # Download the official pre-compiled Allegro binaries for Windows MinGW using PowerShell
+        # Using the built-in Windows PowerShell to pull down the development kit safely
         Invoke-WebRequest -Uri "https://github.com/liballeg/allegro5/releases/download/5.2.8.0/allegro-x86_64-w64-mingw32-gcc-12.1.0-posix-seh-static-5.2.8.0.zip" -OutFile "allegro.zip"
         Expand-Archive -Path "allegro.zip" -DestinationPath "allegro_win"
 
     - name: Compile Game for Windows (.exe)
+      shell: cmd
       run: |
-        # Compile using native g++ with explicit paths to our downloaded headers and libs
-        g++ -std=c++17 *.cpp -o FantasyGame.exe `
-          -I.\allegro_win\allegro\include `
-          -L.\allegro_win\allegro\lib `
-          -lallegro-monolith.dll `
-          -static-libgcc -static-libstdc++ `
+        # We manually add the pre-installed MinGW path to our environment just in case, then compile
+        set PATH=C:\msys64\mingw64\bin;%PATH%
+        g++ -std=c++17 *.cpp -o FantasyGame.exe ^
+          -I.\allegro_win\allegro\include ^
+          -L.\allegro_win\allegro\lib ^
+          -lallegro-monolith.dll ^
+          -static-libgcc -static-libstdc++ ^
           -lwinmm
 
     # === CONTINUOUS DELIVERY (CD) COMPONENT ===
