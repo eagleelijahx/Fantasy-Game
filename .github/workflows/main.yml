@@ -122,10 +122,15 @@ jobs:
         RELEASE_TAG: v1.0.${{ github.run_number }}
         DOWNLOAD_URL: https://dcbc64a200c5t.cloudfront.net/FantasyGame-v1.0.${{ github.run_number }}.zip
       run: |
-        gh release edit "$RELEASE_TAG" --append-body \
-        -n "
+        # 1. Fetch the current body of the release and save it to a file
+        gh release view "$RELEASE_TAG" --json body --jq .body > current_body.txt
         
-        ---
-        ### 📥 Download via CloudFront (Global CDN)
-        [Download Version $RELEASE_TAG here]($DOWNLOAD_URL)"
+        # 2. Append the new link to the file
+        echo -e "\n\n---\n### 📥 Download via CloudFront (Global CDN)\n[Download Version $RELEASE_TAG here]($DOWNLOAD_URL)" >> current_body.txt
+        
+        # 3. Update the release using the file as the new body
+        gh release edit "$RELEASE_TAG" --body-file current_body.txt
 
+
+    
+    
