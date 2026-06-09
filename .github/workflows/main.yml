@@ -32,10 +32,11 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-vcpkg-dynamic-
     
-    # --- 2. Install Allegro 5 (Dynamic configuration) ---
+    # --- 2. Install Allegro 5 & Integrate ---
     - name: Install Allegro 5 via vcpkg
       run: |
         vcpkg install allegro5:x64-windows
+        vcpkg integrate install
    
     # --- 3. Setup MSVC Compiler Path ---
     - name: Setup MSVC Developer Command Prompt
@@ -43,45 +44,44 @@ jobs:
 
     # --- 4. Compile + Safe Header Injection + Asset Bundling + Create ZIP Bundle ---
     - name: Compile Game and Bundle Assets
+      shell: pwsh
       run: |
         # Create a fake bits folder to trick MSVC into finding stdc++.h
-        mkdir bits -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path "bits"
         
         # Clean, simple echoing to build the proxy header file safely without parsing bugs
-        echo "#include <iostream>" > bits\stdc++.h
-        echo "#include <vector>" >> bits\stdc++.h
-        echo "#include <string>" >> bits\stdc++.h
-        echo "#include <algorithm>" >> bits\stdc++.h
-        echo "#include <cmath>" >> bits\stdc++.h
-        echo "#include <memory>" >> bits\stdc++.h
-        echo "#include <map>" >> bits\stdc++.h
-        echo "#include <set>" >> bits\stdc++.h
+        @'
+        #include <iostream>
+        #include <vector>
+        #include <string>
+        #include <algorithm>
+        #include <cmath>
+        #include <memory>
+        #include <map>
+        #include <set>
+        #include <fstream>
+        #include <windows.h>
+        #include <mmsystem.h>
+        '@ | Out-File -FilePath "bits/stdc++.h" -Encoding utf8
         
-        # FIXES: Injecting the missing file stream and Windows multimedia headers
-        echo "#include <fstream>" >> bits\stdc++.h
-        echo "#include <windows.h>" >> bits\stdc++.h
-        echo "#include <mmsystem.h>" >> bits\stdc++.h
-        
-        # Compile using single-line syntax (Fixed static library names to match dynamic vcpkg layout)
+        # Compile using single-line syntax 
         # Added /EHsc flag to resolve C++ exception handling errors
-        cl.exe /EHsc /std:c++17 /D_HAS_STD_BYTE=0 /DNOMINMAX *.cpp /Fe:FantasyGame.exe /I. /I"C:\vcpkg\installed\x64-windows\include" /link /LIBPATH:"C:\vcpkg\installed\x64-windows\lib" allegro.lib allegro_main.lib allegro_image.lib allegro_audio.lib allegro_acodec.lib allegro_font.lib allegro_ttf.lib allegro_primitives.lib allegro_dialog.lib Winmm.lib
+        cl.exe /EHsc /std:c++17 /D_HAS_STD_BYTE=0 /DNOMINMAX *.cpp /Fe:FantasyGame.exe /I. /I"C:/vcpkg/installed/x64-windows/include" /link /LIBPATH:"C:/vcpkg/installed/x64-windows/lib" allegro.lib allegro_main.lib allegro_image.lib allegro_audio.lib allegro_acodec.lib allegro_font.lib allegro_ttf.lib allegro_primitives.lib allegro_dialog.lib Winmm.lib
         
         # Create a clean deployment folder
-        mkdir dist -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path "dist"
         
         # Copy executable and compiled system binaries
-        copy FantasyGame.exe dist\
-        copy C:\vcpkg\installed\x64-windows\bin\*.dll dist\
+        Copy-Item -Path "FantasyGame.exe" -Destination "dist/" -Force
+        Copy-Item -Path "C:/vcpkg/installed/x64-windows/bin/*.dll" -Destination "dist/" -Force -ErrorAction SilentlyContinue
         
-        # =========================================================================
-        # CRITICAL FIX: Copy all required assets into the distribution folder
-        # =========================================================================
-        copy *.png dist\ -ErrorAction SilentlyContinue
-        copy *.wav dist\ -ErrorAction SilentlyContinue
-        copy *.ttf dist\ -ErrorAction SilentlyContinue
+        # CRITICAL FIX: Copy all required assets into the distribution folder if they exist
+        Copy-Item -Path "*.png" -Destination "dist/" -Force -ErrorAction SilentlyContinue
+        Copy-Item -Path "*.wav" -Destination "dist/" -Force -ErrorAction SilentlyContinue
+        Copy-Item -Path "*.ttf" -Destination "dist/" -Force -ErrorAction SilentlyContinue
         
         # Compress everything together into the final game deployment archive
-        Compress-Archive -Path dist\* -DestinationPath FantasyGame-Windows-Build.zip -Force
+        Compress-Archive -Path "dist/*" -DestinationPath "FantasyGame-Windows-Build.zip" -Force
     
     # --- 5. Upload to the Artifacts Tab ---
     - name: Upload Windows Build Artifact
@@ -125,12 +125,14 @@ jobs:
         RELEASE_TAG: v1.0.${{ github.run_number }}
         DOWNLOAD_URL: https://dcbc64a200c5t.cloudfront.net/FantasyGame-v1.0.${{ github.run_number }}.zip
       run: |
-        # 1. Fetch current release notes and save to a file
-        gh release view "$env:RELEASE_TAG" --json body --jq .body | Out-File -FilePath current_notes.txt -Encoding utf8
+        # 1. Fetch current release notes safely into a variable to avoid stream file locking
+        $notes = gh release view "$env:RELEASE_TAG" --json body --jq .body
         
-        # 2. Append the new link to the file
-        Add-Content -Path current_notes.txt -Value "`n`n---`n### 📥 Download via CloudFront (Global CDN)`n[Download Version $env:RELEASE_TAG here]($env:DOWNLOAD_URL)"
+        # 2. Format the new content string
+        $updatedNotes = $notes + "`n`n---`n### 📥 Download via CloudFront (Global CDN)`n[Download Version $env:RELEASE_TAG here]($env:DOWNLOAD_URL)"
         
-        # 3. Update the release using the correct flag (--notes-file)
-        gh release edit "$env:RELEASE_TAG" --notes-file current_notes.txt
-
+        # 3. Output to file safely without pipeline lockouts
+        $updatedNotes | Out-File -FilePath "current_notes.txt" -Encoding utf8
+        
+        # 4. Update the release using the static file notes flag
+        gh release edit "$env:RELEASE_TAG" --notes-file "current_notes.txt"
