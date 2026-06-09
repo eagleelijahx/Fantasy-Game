@@ -1,1 +1,1 @@
-Crafted a C++ CI/CD pipeline via GitHub Actions using Allegro 5, implementing a dynamic header-injection patch to resolve GCC-to-MSVC source compatibility mismatches on windows-latest⁠ runners.
+Crafted a cross-platform compliant C++ CI/CD pipeline via GitHub Actions using Allegro 5, featuring automated cross-compiler verification (MSVC), robust dependency caching via vcpkg, secure multi-stage deployment to AWS S3/CloudFront, and dynamic GitHub Release integration.
